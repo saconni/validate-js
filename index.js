@@ -53,7 +53,7 @@ let validators = {
   // required
   required: (val, opt, ctx) => {
     if(opt && _isNull(val)) {
-      ctx.errors.push(`${ctx.getCurrentPath()}: is required`)
+      ctx.errors.push(`${ctx.getCurrentPath()} is required`)
     }
   },
   // type
