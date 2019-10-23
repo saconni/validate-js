@@ -153,12 +153,15 @@ let validators = {
     let tempCtx = new Context()
     tempCtx.stack = [...ctx.stack]
     tempCtx.path = [...ctx.path]
+    let errors = []
     for(let i = 0; i < opt.length; i++) {
       tempCtx.errors = []
       _validate(obj, acc, opt[i], tempCtx)
       if(tempCtx.errors.length == 0) return
+      errors = [...errors, ...tempCtx.errors]
     }
     ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" does not match any valid criteria`)
+    errors.forEach((e, ix) => ctx.errors.push(`   =>[${ix}]: ${e}`))
   }
 }
 

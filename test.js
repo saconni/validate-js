@@ -45,7 +45,7 @@ let obj = {
     checkpoints: [1, 2],
     dev: 'pablo',
     length: 10,
-    a: () => 1
+    a: 'a'
   }
 }
 
