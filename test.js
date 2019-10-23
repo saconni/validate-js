@@ -21,7 +21,9 @@ let path = module.exports.path = {
       items: {
         default: 'a'
       }
-    }
+    },
+    dev: { in: ['rodo', 'maxi'] },
+    length: { bounds: { gt: 1, lt: 10 } }
   }
 }
 
@@ -40,6 +42,8 @@ let obj = {
     id: '1', 
     name: 'rodo', 
     checkpoints: [1, 2],
+    dev: 'pablo',
+    length: 10
   }
 }
 

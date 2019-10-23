@@ -1,6 +1,5 @@
 
-function _validate(obj, acc, def, ctx = null) {
-  ctx = ctx || new Context()
+function _validate(obj, acc, def, ctx) {
   // if it is not optional, assume it's required
   if(!def['optional']) def.required = true
   // get the value
@@ -17,7 +16,7 @@ function _validate(obj, acc, def, ctx = null) {
 
 function Context() {
   this.errors = []
-  this.path = ['value']
+  this.path = []
   this.stack = []
 }
 
@@ -54,14 +53,14 @@ let validators = {
   // required
   required: (val, opt, ctx) => {
     if(opt && _isNull(val)) {
-      ctx.errors.push(`${ctx.getCurrentPath()} is required`)
+      ctx.errors.push(`${ctx.getCurrentPath()}: is required`)
     }
   },
   // type
   type: (val, opt, ctx) => {
     if(_isNull(val)) return
     if(typeof val !== opt) {
-      ctx.errors.push(`${ctx.getCurrentPath()} is not ${opt}`)
+      ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not ${opt}`)
     }
   },
   // schema
@@ -81,7 +80,7 @@ let validators = {
   items: (val, opt, ctx) => {
     if(_isNull(val)) return
     if(typeof val.forEach !== 'function') {
-      ctx.errors.push(`${ctx.getCurrentPath()} is not iterable`)
+      ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not iterable`)
       return
     }
     ctx.stack.push(val)
@@ -93,11 +92,45 @@ let validators = {
       ctx.path.pop()
     })
     ctx.stack.pop()
+  },
+  // in
+  in: (val, opt, ctx) => {
+    if(_isNull(val)) return
+    if(opt.indexOf(val) == -1) {
+      ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not in ${JSON.stringify(opt)}`)
+    }
+  },
+  bounds: (val, opt, ctx) => {
+    if(_isNull(val)) return
+    Object.keys(opt).forEach(cond => {
+      switch(cond) {
+        case 'gt':
+          if(!(val > opt.gt))
+            ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not in greater than ${opt.gt}`)
+          break;
+        case 'gte':
+          if(!(val >= opt.gte))
+            ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not in greater or equal than ${opt.gte}`)
+          break;
+          case 'lt':
+            if(!(val < opt.lt))
+              ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not in lesser than ${opt.lt}`)
+          break;
+        case 'lte':
+          if(!(val <= opt.lte))
+            ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not in lesser or equal than ${opt.lte}`)
+          break;
+        default:
+          throw new Error(`invalid definition: unknown bounds condition "${cond}"`)
+      }
+    })
   }
 }
 
-module.exports.validate = (value, definition, options) => { 
-  let errors = _validate(value, null, definition).errors
+module.exports.validate = (value, definition, options = {}) => { 
+  let ctx = new Context()
+  ctx.path.push(options.prefix || 'value')
+  let errors = _validate(value, null, definition, ctx).errors
   if(errors.length == 0) errors = null
   return errors
 }
