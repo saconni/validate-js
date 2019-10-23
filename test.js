@@ -23,7 +23,8 @@ let path = module.exports.path = {
       }
     },
     dev: { in: ['rodo', 'maxi'] },
-    length: { bounds: { gt: 1, lt: 10 } }
+    length: { bounds: { gt: 1, lt: 10 } },
+    a: { either: ['object', 'function'] }
   }
 }
 
@@ -43,7 +44,8 @@ let obj = {
     name: 'rodo', 
     checkpoints: [1, 2],
     dev: 'pablo',
-    length: 10
+    length: 10,
+    a: () => 1
   }
 }
 

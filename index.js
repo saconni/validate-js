@@ -1,14 +1,12 @@
 
 function _validate(obj, acc, def, ctx) {
+  if(typeof def == 'string') def = { type: def }
   // if it is not optional, assume it's required
   if(!def['optional']) def.required = true
-  // get the value
-  let val = obj
   // run all the validators in def
   Object.keys(validators).forEach(key => {
-    if(acc != null) val = obj[acc]
     if(!_isNull(def[key])) {
-      validators[key](val, def[key], ctx)
+      validators[key](obj, acc, def[key], ctx)
     }
   })
   return ctx
@@ -28,48 +26,56 @@ function _isNull(val) {
   return typeof val === 'undefined' || val == null
 }
 
+function _getVal(obj, acc) {
+  if(_isNull(acc)) {
+    return obj
+  }
+  else {
+    return obj[acc]
+  }
+}
+
 let validators = {
   // optional
-  optional: (val, opt, ctx) => {},
+  optional: (obj, acc, opt, ctx) => {},
   // default
-  default: (val, opt, ctx) => {
+  default: (obj, acc, opt, ctx) => {
+    if(_isNull(acc)) {
+      throw new Error('invalid definition: default is only valid for composed values')
+    }
+    let val = _getVal(obj, acc)
     if(_isNull(val)) {
-      if(ctx.stack.length < 1) {
-        throw new Error('invalid definition: default is only valid for composed values')
-      }
-      let obj = ctx.stack.slice(-1)[0]
-      let acc = ctx.path.slice(-1)[0]
-      if(acc.startsWith('.')) {
-        acc = acc.slice(1)
-      }
-      else {
-        acc = parseInt(acc.slice(1,-1))
-      }
       // if opt is a function, resolve it
       if(typeof opt === 'function') opt = opt()
       obj[acc] = opt
     }
   },
   // required
-  required: (val, opt, ctx) => {
+  required: (obj, acc, opt, ctx) => {
+    let val = _getVal(obj, acc)
     if(opt && _isNull(val)) {
       ctx.errors.push(`${ctx.getCurrentPath()} is required`)
     }
   },
   // type
-  type: (val, opt, ctx) => {
+  type: (obj, acc, opt, ctx) => {
+    let val = _getVal(obj, acc)
     if(_isNull(val)) return
     if(opt == 'array') {
       if(!Array.isArray(val)) {
         ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not array`)
       }
     }
+    else if(opt == 'datetime') {
+      obj[acc] = new Date(val)
+    }
     else if(typeof val !== opt) {
       ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not ${opt}`)
     }
   },
   // schema
-  schema: (val, opt, ctx) => {
+  schema: (obj, acc, opt, ctx) => {
+    let val = _getVal(obj, acc)
     if(_isNull(val)) return
     ctx.stack.push(val)
     // if opt is a function, resolve it
@@ -82,17 +88,18 @@ let validators = {
     ctx.stack.pop()
   },
   // items
-  items: (val, opt, ctx) => {
+  items: (obj, acc, opt, ctx) => {
+    let val = _getVal(obj, acc)
     if(_isNull(val)) return
     // if opt is a function, resolve it
     if(typeof opt === 'function') opt = opt()
     ctx.stack.push(val)
     if(typeof val.forEach === 'function') {
-    val.forEach((item, ix) => {
-      ctx.path.push(`[${ix}]`)
-      _validate(val, ix, opt, ctx)
-      ctx.path.pop()
-    })
+      val.forEach((item, ix) => {
+        ctx.path.push(`[${ix}]`)
+        _validate(val, ix, opt, ctx)
+        ctx.path.pop()
+      })
     }
     else if(typeof val == 'object') {
       Object.keys(val).forEach(key => {
@@ -107,13 +114,15 @@ let validators = {
     ctx.stack.pop()
   },
   // in
-  in: (val, opt, ctx) => {
+  in: (obj, acc, opt, ctx) => {
+    let val = _getVal(obj, acc)
     if(_isNull(val)) return
     if(opt.indexOf(val) == -1) {
       ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not in ${JSON.stringify(opt)}`)
     }
   },
-  bounds: (val, opt, ctx) => {
+  bounds: (obj, acc, opt, ctx) => {
+    let val = _getVal(obj, acc)
     if(_isNull(val)) return
     Object.keys(opt).forEach(cond => {
       switch(cond) {
@@ -137,6 +146,19 @@ let validators = {
           throw new Error(`invalid definition: unknown bounds condition "${cond}"`)
       }
     })
+  },
+  // either
+  either: (obj, acc, opt, ctx) => {
+    let val = _getVal(obj, acc)
+    let tempCtx = new Context()
+    tempCtx.stack = [...ctx.stack]
+    tempCtx.path = [...ctx.path]
+    for(let i = 0; i < opt.length; i++) {
+      tempCtx.errors = []
+      _validate(obj, acc, opt[i], tempCtx)
+      if(tempCtx.errors.length == 0) return
+    }
+    ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" does not match any valid criteria`)
   }
 }
 
