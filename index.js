@@ -59,7 +59,12 @@ let validators = {
   // type
   type: (val, opt, ctx) => {
     if(_isNull(val)) return
-    if(typeof val !== opt) {
+    if(opt == 'array') {
+      if(!Array.isArray(val)) {
+        ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not array`)
+      }
+    }
+    else if(typeof val !== opt) {
       ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not ${opt}`)
     }
   },
@@ -79,18 +84,26 @@ let validators = {
   // items
   items: (val, opt, ctx) => {
     if(_isNull(val)) return
-    if(typeof val.forEach !== 'function') {
-      ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not iterable`)
-      return
-    }
-    ctx.stack.push(val)
     // if opt is a function, resolve it
     if(typeof opt === 'function') opt = opt()
+    ctx.stack.push(val)
+    if(typeof val.forEach === 'function') {
     val.forEach((item, ix) => {
       ctx.path.push(`[${ix}]`)
       _validate(val, ix, opt, ctx)
       ctx.path.pop()
     })
+    }
+    else if(typeof val == 'object') {
+      Object.keys(val).forEach(key => {
+        ctx.path.push(`.${key}`)
+        _validate(val, key, opt, ctx)
+        ctx.path.pop()
+      })
+    }
+    else {
+      ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not iterable`)
+    }
     ctx.stack.pop()
   },
   // in
