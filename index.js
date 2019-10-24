@@ -1,4 +1,3 @@
-
 function _validate(obj, acc, def, ctx) {
   if(typeof def == 'string') def = { type: def }
   // default strict to true
@@ -21,12 +20,26 @@ function Context() {
   this.errors = []
   this.path = []
   this.stack = []
-  this.strict = []
+  this.assert = false
 }
 
 Context.prototype.getCurrentPath = function() {
   return this.path.join('')
-} 
+}
+
+Context.prototype.error = function(msg, inner) {
+  let err = null
+  if(inner) {
+    err = [this.getCurrentPath(), msg, inner]
+  }
+  else {
+    err = [this.getCurrentPath(), msg]
+  }
+  this.errors.push(err)
+  if(this.assert) {
+    throw new Error(JSON.stringify(err, null, 2))
+  }
+}
 
 function _isNull(val) {
   return typeof val === 'undefined' || val == null
@@ -81,7 +94,7 @@ let validators = {
   required: (obj, acc, opt, ctx) => {
     let val = _getVal(obj, acc)
     if(opt && _isNull(val)) {
-      ctx.errors.push(`${ctx.getCurrentPath()} is required`)
+      ctx.error(`is required`)
     }
   },
   // type
@@ -90,14 +103,14 @@ let validators = {
     if(_isNull(val)) return
     if(opt == 'array') {
       if(!Array.isArray(val)) {
-        ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not array`)
+        ctx.error(`is not array`)
       }
     }
     else if(opt == 'datetime') {
       obj[acc] = new Date(val)
     }
     else if(typeof val !== opt) {
-      ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not ${opt}`)
+      ctx.error(`is not ${opt}`)
     }
   },
   // schema
@@ -114,8 +127,7 @@ let validators = {
     if(ctx.stack.slice(-1)[0][2].strict) {
       Object.keys(val).forEach(key => {
         if(_isNull(opt[key])) {
-          console.log(`${ctx.getCurrentPath()}: unknown property "${key}"`)
-          ctx.errors.push(`${ctx.getCurrentPath()}: unknown property "${key}"`)
+          ctx.error(`unknown property "${key}"`)
         }
       })
     }
@@ -141,7 +153,7 @@ let validators = {
       })
     }
     else {
-      ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not iterable`)
+      ctx.error(`is not iterable`)
     }
   },
   // in
@@ -149,9 +161,10 @@ let validators = {
     let val = _getVal(obj, acc)
     if(_isNull(val)) return
     if(opt.indexOf(val) == -1) {
-      ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not in ${JSON.stringify(opt)}`)
+      ctx.error(`is not in ${JSON.stringify(opt)}`)
     }
   },
+  // bounds
   bounds: (obj, acc, opt, ctx) => {
     let val = _getVal(obj, acc)
     if(_isNull(val)) return
@@ -159,19 +172,19 @@ let validators = {
       switch(cond) {
         case 'gt':
           if(!(val > opt.gt))
-            ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not in greater than ${opt.gt}`)
+            ctx.error(`is not greater than ${opt.gt}`)
           break;
         case 'gte':
           if(!(val >= opt.gte))
-            ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not in greater or equal than ${opt.gte}`)
+            ctx.error(`is not greater or equal than ${opt.gte}`)
           break;
           case 'lt':
             if(!(val < opt.lt))
-              ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not in lesser than ${opt.lt}`)
+              ctx.error(`is not lesser than ${opt.lt}`)
           break;
         case 'lte':
           if(!(val <= opt.lte))
-            ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not in lesser or equal than ${opt.lte}`)
+            ctx.error(`is not lesser or equal than ${opt.lte}`)
           break;
         default:
           throw new Error(`invalid definition: unknown bounds condition "${cond}"`)
@@ -189,18 +202,66 @@ let validators = {
       tempCtx.errors = []
       _validate(obj, acc, opt[i], tempCtx)
       if(tempCtx.errors.length == 0) return
+      //errors.push(tempCtx.errors)
       errors = [...errors, ...tempCtx.errors]
     }
-    console.log(`${ctx.getCurrentPath()}: "${val}" does not match any valid criteria`)
-    ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" does not match any valid criteria`)
-    errors.forEach((e, ix) => ctx.errors.push(`   =>[${ix}]: ${e}`))
+    ctx.error(`does not match any valid criteria`, errors)
   }
 }
 
-module.exports.validate = (value, definition, options = {}) => { 
+function _trustValidate(value, definition, options = {}) {
   let ctx = new Context()
   ctx.path.push(options.prefix || 'value')
+  if(options.assert) {
+    ctx.assert = true
+  }
   let errors = _validate(value, null, definition, ctx).errors
   if(errors.length == 0) errors = null
   return errors
+}
+
+module.exports.validate = (value, definition, options = {}) => { 
+  _trustValidate(definition, meta, { assert: true, prefix: 'definition' })
+  return _trustValidate(value, definition, options);
+}
+
+function orFunction(def) {
+  return {
+    optional: true,
+    either: ['function', def]
+  }
+}
+
+let meta_items = { type: 'object', schema: () => meta.schema }
+
+let meta_schema = { type: 'object', items: { schema: () => meta.schema } }
+
+let meta = { 
+  schema: {
+    optional: { optional: true, type: 'boolean' },
+    strict: { optional: true, type: 'boolean' },
+    default: { optional: true },
+    required: { optional: true, type: 'boolean' },
+    type: { optional: true, type: 'string', in: ['boolean', 'string', 'array', 'datetime', 'object', 'function'] },
+    schema: orFunction(meta_schema),
+    items: orFunction(meta_items),
+    in: { optional: true, type: 'array' },
+    bounds: { 
+      optional: true, 
+      type: 'object', 
+      schema: {
+        gt: { optional: true },
+        gte: { optional: true },
+        lt: { optional: true },
+        lte: { optional: true }
+      } 
+    },
+    either: { 
+      optional: true, 
+      type: 'array', 
+      items: {
+        schema: () => meta.schema
+      }
+    }
+  }
 }
