@@ -221,7 +221,7 @@ function _trustValidate(value, definition, options = {}) {
 }
 
 module.exports.validate = (value, definition, options = {}) => { 
-  _trustValidate(definition, meta, { assert: true, prefix: 'definition' })
+  //_trustValidate(definition, meta, { assert: true, prefix: 'definition' })
   return _trustValidate(value, definition, options);
 }
 
