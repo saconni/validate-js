@@ -1,14 +1,19 @@
 
 function _validate(obj, acc, def, ctx) {
   if(typeof def == 'string') def = { type: def }
+  // default strict to true
+  if(_isNull(def.strict)) def.strict = true
   // if it is not optional, assume it's required
   if(!def['optional']) def.required = true
+  // keep a stack of validating values
+  ctx.stack.push([obj, acc, def])
   // run all the validators in def
   Object.keys(validators).forEach(key => {
     if(!_isNull(def[key])) {
       validators[key](obj, acc, def[key], ctx)
     }
   })
+  ctx.stack.pop()
   return ctx
 }
 
@@ -16,6 +21,7 @@ function Context() {
   this.errors = []
   this.path = []
   this.stack = []
+  this.strict = []
 }
 
 Context.prototype.getCurrentPath = function() {
@@ -38,6 +44,8 @@ function _getVal(obj, acc) {
 let validators = {
   // optional
   optional: (obj, acc, opt, ctx) => {},
+  // strict
+  strict: (obj, acc, opt, ctx) => {},
   // default
   default: (obj, acc, opt, ctx) => {
     if(_isNull(acc)) {
@@ -77,7 +85,6 @@ let validators = {
   schema: (obj, acc, opt, ctx) => {
     let val = _getVal(obj, acc)
     if(_isNull(val)) return
-    ctx.stack.push(val)
     // if opt is a function, resolve it
     if(typeof opt === 'function') opt = opt()
     Object.keys(opt).forEach(o => {
@@ -85,15 +92,21 @@ let validators = {
       _validate(val, o, opt[o], ctx)
       ctx.path.pop()
     })
-    ctx.stack.pop()
-  },
+    if(ctx.stack.slice(-1)[0][2].strict) {
+      Object.keys(val).forEach(key => {
+        if(_isNull(opt[key])) {
+          console.log(`${ctx.getCurrentPath()}: unknown property "${key}"`)
+          ctx.errors.push(`${ctx.getCurrentPath()}: unknown property "${key}"`)
+        }
+      })
+    }
+   },
   // items
   items: (obj, acc, opt, ctx) => {
     let val = _getVal(obj, acc)
     if(_isNull(val)) return
     // if opt is a function, resolve it
     if(typeof opt === 'function') opt = opt()
-    ctx.stack.push(val)
     if(typeof val.forEach === 'function') {
       val.forEach((item, ix) => {
         ctx.path.push(`[${ix}]`)
@@ -111,7 +124,6 @@ let validators = {
     else {
       ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" is not iterable`)
     }
-    ctx.stack.pop()
   },
   // in
   in: (obj, acc, opt, ctx) => {
@@ -151,7 +163,6 @@ let validators = {
   either: (obj, acc, opt, ctx) => {
     let val = _getVal(obj, acc)
     let tempCtx = new Context()
-    tempCtx.stack = [...ctx.stack]
     tempCtx.path = [...ctx.path]
     let errors = []
     for(let i = 0; i < opt.length; i++) {

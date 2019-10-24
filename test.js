@@ -33,6 +33,7 @@ let id = module.exports.id = {
 }
 
 let constraints = {
+  strict: false,
   schema: {
     body: path
   }
@@ -45,7 +46,8 @@ let obj = {
     checkpoints: [1, 2],
     dev: 'pablo',
     length: 10,
-    a: 'a'
+    a: 'a',
+    b: 1,
   }
 }
 
