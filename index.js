@@ -41,6 +41,25 @@ function _getVal(obj, acc) {
   }
 }
 
+let metadef = {
+  schema: {
+    optional: { optional: true, type: 'boolean' },
+    default: { optional: true },
+    required: { optional: true, type: 'boolean' },
+    type: { optional: true, type: 'string', in: ['boolean', 'string', 'array', 'datetime', 'object', 'function'] },
+    schema: { optional: true, either: ['function', { type: 'object', items: () => metadef.schema }] },
+    items: { optional: true, type: 'object', schema: () => metadef.schema },
+    in: { optional: true, type: 'array' },
+    bounds: { optional: true, type: 'object', schema: {
+      gt: { optional: true },
+      gte: { optional: true },
+      lt: { optional: true },
+      lte: { optional: true }
+    } },
+    either: { type: 'array', items: () => metadef.schema }
+  }
+}
+
 let validators = {
   // optional
   optional: (obj, acc, opt, ctx) => {},
@@ -162,6 +181,7 @@ let validators = {
   // either
   either: (obj, acc, opt, ctx) => {
     let val = _getVal(obj, acc)
+    if(_isNull(val)) return
     let tempCtx = new Context()
     tempCtx.path = [...ctx.path]
     let errors = []
@@ -171,6 +191,7 @@ let validators = {
       if(tempCtx.errors.length == 0) return
       errors = [...errors, ...tempCtx.errors]
     }
+    console.log(`${ctx.getCurrentPath()}: "${val}" does not match any valid criteria`)
     ctx.errors.push(`${ctx.getCurrentPath()}: "${val}" does not match any valid criteria`)
     errors.forEach((e, ix) => ctx.errors.push(`   =>[${ix}]: ${e}`))
   }
