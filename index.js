@@ -1,15 +1,19 @@
-function _validate(obj, acc, def, ctx) {
+function _validate(obj, path, def, ctx) {
   if(typeof def == 'string') def = { type: def }
-  // default strict to true
-  if(_isNull(def.strict)) def.strict = true
+  // default strict to false
+  if(_isNull(def.strict)) def.strict = false
   // if it is not optional, assume it's required
   if(!def['optional']) def.required = true
   // keep a stack of validating values
-  ctx.stack.push([obj, acc, def])
+  ctx.stack.push([obj, path, def])
+  // check all are valid validators
+  Object.keys(def).forEach(key => {
+    if(_isNull(validators[key])) throw new Error(`Invalid definition: unrecognized keyword '${key}'`)
+  }) 
   // run all the validators in def
   Object.keys(validators).forEach(key => {
     if(!_isNull(def[key])) {
-      validators[key](obj, acc, def[key], ctx)
+      validators[key](obj, path, def[key], ctx)
     }
   })
   ctx.stack.pop()
@@ -42,34 +46,15 @@ Context.prototype.error = function(msg, inner) {
 }
 
 function _isNull(val) {
-  return typeof val === 'undefined' || val == null
+  return typeof val === 'undefined' || val === null
 }
 
-function _getVal(obj, acc) {
-  if(_isNull(acc)) {
+function _getVal(obj, path) {
+  if(_isNull(path) || path === '') {
     return obj
   }
   else {
-    return obj[acc]
-  }
-}
-
-let metadef = {
-  schema: {
-    optional: { optional: true, type: 'boolean' },
-    default: { optional: true },
-    required: { optional: true, type: 'boolean' },
-    type: { optional: true, type: 'string', in: ['boolean', 'string', 'array', 'datetime', 'object', 'function'] },
-    schema: { optional: true, either: ['function', { type: 'object', items: () => metadef.schema }] },
-    items: { optional: true, type: 'object', schema: () => metadef.schema },
-    in: { optional: true, type: 'array' },
-    bounds: { optional: true, type: 'object', schema: {
-      gt: { optional: true },
-      gte: { optional: true },
-      lt: { optional: true },
-      lte: { optional: true }
-    } },
-    either: { type: 'array', items: () => metadef.schema }
+    return obj[path]
   }
 }
 
@@ -81,7 +66,7 @@ let validators = {
   // default
   default: (obj, acc, opt, ctx) => {
     if(_isNull(acc)) {
-      throw new Error('invalid definition: default is only valid for composed values')
+      throw new Error('Invalid definition: default is only valid for composed values')
     }
     let val = _getVal(obj, acc)
     if(_isNull(val)) {
@@ -119,6 +104,8 @@ let validators = {
     if(_isNull(val)) return
     // if opt is a function, resolve it
     if(typeof opt === 'function') opt = opt()
+    // make sure opt is now an object
+    if(typeof opt !== 'object') throw new Error(`Invalid definition: 'schema' must resolve to an object, instead got ${JSON.stringify(opt)}`) 
     Object.keys(opt).forEach(o => {
       ctx.path.push(`.${o}`)
       _validate(val, o, opt[o], ctx)
@@ -205,7 +192,7 @@ let validators = {
       //errors.push(tempCtx.errors)
       errors = [...errors, ...tempCtx.errors]
     }
-    ctx.error(`does not match any valid criteria`, errors)
+    ctx.error(`does not match any valid criteria`, JSON.stringify(errors))
   }
 }
 
@@ -220,48 +207,11 @@ function _trustValidate(value, definition, options = {}) {
   return errors
 }
 
-module.exports.validate = (value, definition, options = {}) => { 
+function validate(value, definition, options = {}) { 
   //_trustValidate(definition, meta, { assert: true, prefix: 'definition' })
   return _trustValidate(value, definition, options);
 }
 
-function orFunction(def) {
-  return {
-    optional: true,
-    either: ['function', def]
-  }
-}
+module.exports = validate
+module.exports.validate = validate
 
-let meta_items = { type: 'object', schema: () => meta.schema }
-
-let meta_schema = { type: 'object', items: { schema: () => meta.schema } }
-
-let meta = { 
-  schema: {
-    optional: { optional: true, type: 'boolean' },
-    strict: { optional: true, type: 'boolean' },
-    default: { optional: true },
-    required: { optional: true, type: 'boolean' },
-    type: { optional: true, type: 'string', in: ['boolean', 'string', 'array', 'datetime', 'object', 'function'] },
-    schema: orFunction(meta_schema),
-    items: orFunction(meta_items),
-    in: { optional: true, type: 'array' },
-    bounds: { 
-      optional: true, 
-      type: 'object', 
-      schema: {
-        gt: { optional: true },
-        gte: { optional: true },
-        lt: { optional: true },
-        lte: { optional: true }
-      } 
-    },
-    either: { 
-      optional: true, 
-      type: 'array', 
-      items: {
-        schema: () => meta.schema
-      }
-    }
-  }
-}
