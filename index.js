@@ -31,7 +31,12 @@ let createMetaDefinition = () => {
             items: createMetaDefinition
           },
           ['strict']: 'boolean',
-          ['default']: {}
+          ['default']: {},
+          ['custom']: 'function',
+          ['restrict']: {
+            type: 'array',
+            items: 'string'
+          }
         }
       }
     ]
@@ -107,11 +112,11 @@ class Validator {
 
     let require = this._definition.require
     if(require) {
-      require.forEach(req => {
-        if(aValue[req] === undefined) {
-          throw new Error(`${aValueName}.${req} is 'undefined'`)
+      for(let i = 0; i < require.length; i++) {
+        if(aValue[require[i]] === undefined) {
+          throw new Error(`${aValueName}.${require[i]} is 'undefined'`)
         }
-      })
+      }
     }
 
     let items = this._definition.items
@@ -157,9 +162,28 @@ class Validator {
       }
     }
 
+    let custom = this._definition.custom
+    if(custom) {
+      aValue = custom(aValue)
+    }
+
+    let restrict = this._definition.restrict
+    if(restrict) {
+      for(let i = 0; i < restrict.length; i++) {
+        if(aValue[restrict[i]] !== undefined) {
+          throw new Error(`${aValueName}.${require[i]} is not allowed`)
+        }
+      }
+    }
+
     return aValue
   }
 }
 
-module.exports = { Validator, createMetaDefinition }
+function validate(definition, value, options = {}) {
+  let aValidator = new Validator(definition, options)
+  return aValidator.validate(value)
+}
+
+module.exports = { Validator, createMetaDefinition, validate }
 

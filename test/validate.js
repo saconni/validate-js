@@ -1,5 +1,5 @@
 let assert = require('assert');
-const { Validator, createMetaDefinition } = require('../index.js');
+const { Validator, createMetaDefinition, validate } = require('../index.js');
 
 suite('validate-js', () => {
   test('can not validate with null definition', () => {
@@ -195,5 +195,28 @@ suite('validate-js', () => {
       default: 'defaultValue'
     })
     assert.strictEqual('defaultValue', aValidator.validate(null))
+  })
+
+  test('can validate using custom function', () => {
+    let aValidator = new Validator({
+      type: 'string',
+      custom: value => { throw new Error('You shall not pass') }
+    })
+    assert.throws(() => aValidator.validate('aValidString'))
+  })
+
+  test('can access the Validator through the exported validate function', () => {
+    assert.strictEqual('aString', validate({type: 'string'}, 'aString'))
+  })
+
+  test('can validate that some fields on objects are restricted', () => {
+    let aValidator = new Validator({
+      type: 'object',
+      restrict: ['aField']
+    })
+    let anInvalidObject = {
+      aField: 'aValue'
+    }
+    assert.throws(() => aValidator.validate(anInvalidObject))
   })
 })

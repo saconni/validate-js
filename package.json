@@ -5,7 +5,7 @@
   "main": "atest.js",
   "scripts": {
     "start": "node atest.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha -u tdd"
   },
   "author": "",
   "license": "ISC",
