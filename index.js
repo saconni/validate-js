@@ -1,217 +1,165 @@
-function _validate(obj, path, def, ctx) {
-  if(typeof def == 'string') def = { type: def }
-  // default strict to false
-  if(_isNull(def.strict)) def.strict = false
-  // if it is not optional, assume it's required
-  if(!def['optional']) def.required = true
-  // keep a stack of validating values
-  ctx.stack.push([obj, path, def])
-  // check all are valid validators
-  Object.keys(def).forEach(key => {
-    if(_isNull(validators[key])) throw new Error(`Invalid definition: unrecognized keyword '${key}'`)
-  }) 
-  // run all the validators in def
-  Object.keys(validators).forEach(key => {
-    if(!_isNull(def[key])) {
-      validators[key](obj, path, def[key], ctx)
-    }
-  })
-  ctx.stack.pop()
-  return ctx
-}
-
-function Context() {
-  this.errors = []
-  this.path = []
-  this.stack = []
-  this.assert = false
-}
-
-Context.prototype.getCurrentPath = function() {
-  return this.path.join('')
-}
-
-Context.prototype.error = function(msg, inner) {
-  let err = null
-  if(inner) {
-    err = [this.getCurrentPath(), msg, inner]
-  }
-  else {
-    err = [this.getCurrentPath(), msg]
-  }
-  this.errors.push(err)
-  if(this.assert) {
-    throw new Error(JSON.stringify(err, null, 2))
+let createMetaDefinition = () => {
+  return {
+    either: [
+      {
+        type: 'function'
+      },
+      {
+        type: 'string',
+        enum: ['string', 'array', 'boolean', 'object', 'number', 'function']
+      },
+      {
+        type: 'object',
+        strict: true,
+        schema: {
+          ['type']: {
+            type: 'string',
+            enum: ['string', 'array', 'boolean', 'object', 'number', 'function']
+          },
+          ['require']: {
+            type: 'array',
+            items: 'string'
+          },
+          ['items']: createMetaDefinition,
+          ['enum']: 'array',
+          ['either']: {
+            type: 'array',
+            items: createMetaDefinition
+          },
+          ['schema']: {
+            type: 'object',
+            items: createMetaDefinition
+          },
+          ['strict']: 'boolean',
+          ['default']: {}
+        }
+      }
+    ]
   }
 }
 
-function _isNull(val) {
-  return typeof val === 'undefined' || val === null
-}
+class Validator {
+  constructor(definition, options = {}) {
+    this.options = options
 
-function _getVal(obj, path) {
-  if(_isNull(path) || path === '') {
-    return obj
-  }
-  else {
-    return obj[path]
-  }
-}
-
-let validators = {
-  // optional
-  optional: (obj, acc, opt, ctx) => {},
-  // strict
-  strict: (obj, acc, opt, ctx) => {},
-  // default
-  default: (obj, acc, opt, ctx) => {
-    if(_isNull(acc)) {
-      throw new Error('Invalid definition: default is only valid for composed values')
-    }
-    let val = _getVal(obj, acc)
-    if(_isNull(val)) {
-      // if opt is a function, resolve it
-      if(typeof opt === 'function') opt = opt()
-      obj[acc] = opt
-    }
-  },
-  // required
-  required: (obj, acc, opt, ctx) => {
-    let val = _getVal(obj, acc)
-    if(opt && _isNull(val)) {
-      ctx.error(`is required`)
-    }
-  },
-  // type
-  type: (obj, acc, opt, ctx) => {
-    let val = _getVal(obj, acc)
-    if(_isNull(val)) return
-    if(opt == 'array') {
-      if(!Array.isArray(val)) {
-        ctx.error(`is not array`)
+    if(!this.options.dontSelfValidate) {
+      let aValidator = new Validator(createMetaDefinition(), {dontSelfValidate: true})
+      try {
+        aValidator.validate(definition, '@validator')
+      }
+      catch(err) {
+        throw new Error(`Validation Definition Error: ${err}`)
       }
     }
-    else if(opt == 'datetime') {
-      obj[acc] = new Date(val)
+
+    if(typeof definition === 'function') {
+      definition = definition()
     }
-    else if(typeof val !== opt) {
-      ctx.error(`is not ${opt}`)
+    
+    if(typeof definition === 'string') {
+      definition = { type: definition }
     }
-  },
-  // schema
-  schema: (obj, acc, opt, ctx) => {
-    let val = _getVal(obj, acc)
-    if(_isNull(val)) return
-    // if opt is a function, resolve it
-    if(typeof opt === 'function') opt = opt()
-    // make sure opt is now an object
-    if(typeof opt !== 'object') throw new Error(`Invalid definition: 'schema' must resolve to an object, instead got ${JSON.stringify(opt)}`) 
-    Object.keys(opt).forEach(o => {
-      ctx.path.push(`.${o}`)
-      _validate(val, o, opt[o], ctx)
-      ctx.path.pop()
-    })
-    if(ctx.stack.slice(-1)[0][2].strict) {
-      Object.keys(val).forEach(key => {
-        if(_isNull(opt[key])) {
-          ctx.error(`unknown property "${key}"`)
+
+    this._definition = definition
+  }
+
+  validate(aValue, aValueName = '@value') {
+    let $default = this._definition.default
+    if($default) {
+      if(aValue === undefined || aValue === null) {
+        aValue = $default
+      }
+    }
+
+    let type = this._definition.type
+    if(type) {
+      if(type === 'array') {
+        if(!Array.isArray(aValue)) {
+          throw new Error(`${aValueName} '${aValue}' is not 'array'`)
+        }
+      }
+      else if(typeof aValue !== type) {
+        throw new Error(`${aValueName} '${aValue}' is not '${type}'`)
+      }
+    }
+
+    let schema = this._definition.schema
+    if(schema) {
+      let schemaKeys = Object.keys(schema)
+
+      if(this._definition.strict) {
+        let valueKeys = Object.keys(aValue)
+        for(let i = 0; i < valueKeys.length; i++) {
+          if(!schemaKeys.includes(valueKeys[i])) {
+            throw new Error(`${aValueName}.${valueKeys[i]} is not declared`)
+          }
+        }
+      }
+      
+      for(let i = 0; i < schemaKeys.length; i++) {
+        let field = schemaKeys[i]
+        if(aValue[field] !== undefined) {
+          let aValidator = new Validator(schema[field], {dontSelfValidate: true})
+          aValidator.validate(aValue[field], `${aValueName}.${field}`)
+        }
+      }
+    }
+
+    let require = this._definition.require
+    if(require) {
+      require.forEach(req => {
+        if(aValue[req] === undefined) {
+          throw new Error(`${aValueName}.${req} is 'undefined'`)
         }
       })
     }
-   },
-  // items
-  items: (obj, acc, opt, ctx) => {
-    let val = _getVal(obj, acc)
-    if(_isNull(val)) return
-    // if opt is a function, resolve it
-    if(typeof opt === 'function') opt = opt()
-    if(typeof val.forEach === 'function') {
-      val.forEach((item, ix) => {
-        ctx.path.push(`[${ix}]`)
-        _validate(val, ix, opt, ctx)
-        ctx.path.pop()
-      })
-    }
-    else if(typeof val == 'object') {
-      Object.keys(val).forEach(key => {
-        ctx.path.push(`.${key}`)
-        _validate(val, key, opt, ctx)
-        ctx.path.pop()
-      })
-    }
-    else {
-      ctx.error(`is not iterable`)
-    }
-  },
-  // in
-  in: (obj, acc, opt, ctx) => {
-    let val = _getVal(obj, acc)
-    if(_isNull(val)) return
-    if(opt.indexOf(val) == -1) {
-      ctx.error(`is not in ${JSON.stringify(opt)}`)
-    }
-  },
-  // bounds
-  bounds: (obj, acc, opt, ctx) => {
-    let val = _getVal(obj, acc)
-    if(_isNull(val)) return
-    Object.keys(opt).forEach(cond => {
-      switch(cond) {
-        case 'gt':
-          if(!(val > opt.gt))
-            ctx.error(`is not greater than ${opt.gt}`)
-          break;
-        case 'gte':
-          if(!(val >= opt.gte))
-            ctx.error(`is not greater or equal than ${opt.gte}`)
-          break;
-          case 'lt':
-            if(!(val < opt.lt))
-              ctx.error(`is not lesser than ${opt.lt}`)
-          break;
-        case 'lte':
-          if(!(val <= opt.lte))
-            ctx.error(`is not lesser or equal than ${opt.lte}`)
-          break;
-        default:
-          throw new Error(`invalid definition: unknown bounds condition "${cond}"`)
+
+    let items = this._definition.items
+    if(items) {
+      let aValidator = new Validator(items, {dontSelfValidate: true})
+      if(Array.isArray(aValue)) {
+        for(let i = 0; i < aValue.length; i++) {
+          aValidator.validate(aValue[i], `${aValueName}[${i}]`)
+        }
       }
-    })
-  },
-  // either
-  either: (obj, acc, opt, ctx) => {
-    let val = _getVal(obj, acc)
-    if(_isNull(val)) return
-    let tempCtx = new Context()
-    tempCtx.path = [...ctx.path]
-    let errors = []
-    for(let i = 0; i < opt.length; i++) {
-      tempCtx.errors = []
-      _validate(obj, acc, opt[i], tempCtx)
-      if(tempCtx.errors.length == 0) return
-      //errors.push(tempCtx.errors)
-      errors = [...errors, ...tempCtx.errors]
+      else {
+        let keys = Object.keys(aValue)
+        for(let i = 0; i < keys.length; i++) {
+          aValidator.validate(aValue[keys[i]], `${aValueName}.${keys[i]}`)
+        }
+      }
     }
-    ctx.error(`does not match any valid criteria`, JSON.stringify(errors))
+
+    let $enum = this._definition.enum
+    if($enum) {
+      if(!$enum.includes(aValue)) {
+        throw new Error(`${aValueName} '${aValue}' is not in ${JSON.stringify($enum)}`)
+      }
+    }
+
+    let either = this._definition.either
+    if(either) {
+      let errors = []
+      let success = false
+      for(let i = 0; !success && i < either.length; i++) {
+        let definition = either[i]
+        let aValidator = new Validator(definition, {dontSelfValidate: true})
+        try {
+          aValue = aValidator.validate(aValue, aValueName)
+          success = true
+        }
+        catch (err) {
+          errors.push([err])
+        }
+      }
+      if(!success) {
+        throw new Error(errors.map(err => err.toString()).join(' && '))
+      }
+    }
+
+    return aValue
   }
 }
 
-function _trustValidate(value, definition, options = {}) {
-  let ctx = new Context()
-  ctx.path.push(options.prefix || 'value')
-  if(options.assert) {
-    ctx.assert = true
-  }
-  let errors = _validate(value, null, definition, ctx).errors
-  if(errors.length == 0) errors = null
-  return errors
-}
-
-function validate(value, definition, options = {}) { 
-  //_trustValidate(definition, meta, { assert: true, prefix: 'definition' })
-  return _trustValidate(value, definition, options);
-}
-
-module.exports = validate
-module.exports.validate = validate
+module.exports = { Validator, createMetaDefinition }
 
