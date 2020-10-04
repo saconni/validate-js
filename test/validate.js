@@ -206,7 +206,7 @@ suite('validate-js', () => {
   })
 
   test('can access the Validator through the exported validate function', () => {
-    assert.strictEqual('aString', validate({type: 'string'}, 'aString'))
+    assert.strictEqual('aString', validate('aString', {type: 'string'}))
   })
 
   test('can validate that some fields on objects are restricted', () => {
@@ -218,5 +218,13 @@ suite('validate-js', () => {
       aField: 'aValue'
     }
     assert.throws(() => aValidator.validate(anInvalidObject))
+  })
+
+  test('does not accept invalid definitions', () => {
+    assert.throws(() => {
+      let aValidtor = new Validator({
+        anNonValidator: 'something'
+      })
+    })
   })
 })
