@@ -11,7 +11,7 @@ let createMetaDefinition = () => {
       {
         type: 'object',
         strict: true,
-        schema: {
+        properties: {
           ['type']: {
             type: 'string',
             enum: ['string', 'array', 'boolean', 'object', 'number', 'function']
@@ -26,7 +26,7 @@ let createMetaDefinition = () => {
             type: 'array',
             items: createMetaDefinition
           },
-          ['schema']: {
+          ['properties']: {
             type: 'object',
             items: createMetaDefinition
           },
@@ -84,27 +84,32 @@ class Validator {
         }
       }
       else if(typeof aValue !== type) {
-        throw new Error(`${aValueName} must be a ${type}`)
+        if(type === 'object') {
+          throw new Error(`${aValueName} must be an ${type}`)
+        }
+        else {
+          throw new Error(`${aValueName} must be a ${type}`)
+        }
       }
     }
 
-    let schema = definition.schema
-    if(schema) {
-      let schemaKeys = Object.keys(schema)
+    let properties = definition.properties
+    if(properties) {
+      let keys = Object.keys(properties)
 
       if(definition.strict) {
         let valueKeys = Object.keys(aValue)
         for(let i = 0; i < valueKeys.length; i++) {
-          if(!schemaKeys.includes(valueKeys[i])) {
+          if(!keys.includes(valueKeys[i])) {
             throw new Error(`${aValueName}.${valueKeys[i]} must be undefined`)
           }
         }
       }
       
-      for(let i = 0; i < schemaKeys.length; i++) {
-        let field = schemaKeys[i]
+      for(let i = 0; i < keys.length; i++) {
+        let field = keys[i]
         if(aValue[field] !== undefined) {
-          let aValidator = new Validator(schema[field], {dontSelfValidate: true})
+          let aValidator = new Validator(properties[field], {dontSelfValidate: true})
           aValue[field] = aValidator.validate(aValue[field], `${aValueName}.${field}`)
         }
       }
@@ -176,6 +181,46 @@ class Validator {
     }
 
     return aValue
+  }
+
+  getOpenApiSchema() {
+    let definition = this.definition
+    if(typeof definition === 'function') {
+      definition = definition()
+    }
+    if(typeof definition === 'string') {
+      definition = { type: definition }
+    }
+
+    let openApiSchema = {}
+    
+    if(definition.type) {
+      openApiSchema.type = definition.type
+    }
+
+    if(definition.enum) {
+      openApiSchema.enum = definition.enum
+    }
+
+    if(definition.properties) {
+      openApiSchema.properties = {}
+      let keys = Object.keys(definition.properties)
+      for(let i = 0; i < keys.length; i++) {
+        let validator = new Validator(definition.properties[keys[i]], {dontSelfValidate: true})
+        openApiSchema.properties[keys[i]] = validator.getOpenApiSchema()
+      }
+    }
+
+    if(definition.type === 'array' && definition.items) {
+      let validator = new Validator(definition.items, {dontSelfValidate: true})
+      openApiSchema.items = validator.getOpenApiSchema()
+    }
+
+    if(definition.require) {
+      openApiSchema.required = definition.require
+    }
+
+    return openApiSchema
   }
 }
 

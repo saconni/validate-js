@@ -49,7 +49,7 @@ suite('validate-js', () => {
     assert.throws(() => aValidator.validate(anInvalidArray))
   })
 
-  test('can validate all object fields using a common definition', () => {
+  test('can validate all object members using a common definition', () => {
     let aValidator = new Validator({
       type: 'object',
       items: 'number'
@@ -66,10 +66,10 @@ suite('validate-js', () => {
     assert.throws(() => aValidator.validate(anInvalidObject))
   })
 
-  test('can validate object fields types', () => {
+  test('can validate object complex members', () => {
     let aValidator = new Validator({
       type: 'object',
-      schema: {
+      properties: {
         aField: 'string'
       }
     })
@@ -83,10 +83,10 @@ suite('validate-js', () => {
     assert.throws(() => aValidator.validate(anInvalidObject))
   })
 
-  test('does not validate unspecified object fields', () => {
+  test('does not validate unspecified object members', () => {
     let aValidator = new Validator({
       type: 'object',
-      schema: {
+      properties: {
         aField: 'string'
       }
     })
@@ -97,10 +97,10 @@ suite('validate-js', () => {
     assert.strictEqual(aValidObject, aValidator.validate(aValidObject))
   })
 
-  test('can validate object optional fields', () => {
+  test('can validate objects with optional members', () => {
     let aValidator = new Validator({
       type: 'object',
-      schema: {
+      properties: {
         aField: 'string'
       }
     })
@@ -110,11 +110,11 @@ suite('validate-js', () => {
     assert.strictEqual(aValidObject, aValidator.validate(aValidObject))
   })
 
-  test('can validate object required fields', () => {
+  test('can validate object required members', () => {
     let aValidator = new Validator({
       type: 'object',
       require: ['aField'],
-      schema: {
+      properties: {
         aField: 'string'
       }
     })
@@ -130,7 +130,7 @@ suite('validate-js', () => {
       items: {
         type: 'object',
         require: ['aField'],
-        schema: {
+        properties: {
           aField: 'string'
         }
       }
@@ -170,11 +170,11 @@ suite('validate-js', () => {
     assert.throws(() => aValidator.validate(anInvalidValue))
   })
 
-  test('does not allow undeclared values on a strict object', () => {
+  test('does not allow undeclared members on strict objects', () => {
     let aValidator = new Validator({
       type: 'object',
       strict: true,
-      schema: {
+      properties: {
         aField: 'string'
       }
     })
@@ -209,7 +209,7 @@ suite('validate-js', () => {
     assert.strictEqual('aString', validate('aString', {type: 'string'}))
   })
 
-  test('can validate that some fields on objects are restricted', () => {
+  test('can validate objects restricted members', () => {
     let aValidator = new Validator({
       type: 'object',
       restrict: ['aField']
